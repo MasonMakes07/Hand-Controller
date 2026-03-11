@@ -11,7 +11,7 @@ Your webcam feed is processed by MediaPipe's hand landmark model, which tracks 2
 
 ## Gesture Map
 
-| Gesture | Key | Hades Action |
+| Gesture | Key |
 |---|---|---|
 | ☝️ Pointing (index up, thumb in) | `W` |
 | ✌️ Peace Sign | `A` |
