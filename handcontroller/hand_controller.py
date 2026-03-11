@@ -23,7 +23,7 @@ def distance(a: Point, b: Point) -> float:
 fingertip_indices = [4, 8, 12, 16, 20]
 knuckle_indices   = [3, 7, 11, 15, 19]
 
-model_path = "hand_landmarker.task"
+model_path = "handcontroller\hand_landmarker.task"
 
 THRESHOLD = 0.02  # raise if false positives, lower if gestures won't trigger
 thumb_THRESHOLD = 0.06
