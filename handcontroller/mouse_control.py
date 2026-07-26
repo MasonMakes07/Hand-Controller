@@ -14,6 +14,7 @@ from pynput.mouse import Button, Controller as PynputMouseController
 
 import config
 import gesture_features
+import mouse_calibration
 
 NON_THUMB_FINGERS = (1, 2, 3, 4)  # index, middle, ring, pinky
 REF_LANDMARK = 9  # middle-finger MCP: stable on the palm regardless of finger curl
@@ -30,6 +31,7 @@ class MouseController:
         self._prev_scroll_y = None
         self.screen_w = ctypes.windll.user32.GetSystemMetrics(0)
         self.screen_h = ctypes.windll.user32.GetSystemMetrics(1)
+        self.bounds = mouse_calibration.load_calibration()
 
     def release_all(self):
         if self._dragging:
@@ -105,9 +107,18 @@ class MouseController:
             self._prev_ref_point = ref_point
             return
 
-        dx = (ref_point[0] - self._prev_ref_point[0]) * self.screen_w * config.MOUSE_SENSITIVITY
-        dy = (ref_point[1] - self._prev_ref_point[1]) * self.screen_h * config.MOUSE_SENSITIVITY
+        delta_x = ref_point[0] - self._prev_ref_point[0]
+        delta_y = ref_point[1] - self._prev_ref_point[1]
         self._prev_ref_point = ref_point
+
+        if self.bounds is not None:
+            range_x = max(self.bounds["max_x"] - self.bounds["min_x"], 1e-6)
+            range_y = max(self.bounds["max_y"] - self.bounds["min_y"], 1e-6)
+            dx = delta_x / range_x * self.screen_w * config.MOUSE_CALIBRATED_GAIN_X
+            dy = delta_y / range_y * self.screen_h * config.MOUSE_CALIBRATED_GAIN_Y
+        else:
+            dx = delta_x * self.screen_w * config.MOUSE_SENSITIVITY
+            dy = delta_y * self.screen_h * config.MOUSE_SENSITIVITY
 
         if config.MOUSE_ACCEL_GAIN:
             accel = 1 + config.MOUSE_ACCEL_GAIN * (dx * dx + dy * dy) ** 0.5

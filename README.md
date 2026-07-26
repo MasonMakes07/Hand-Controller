@@ -1,13 +1,13 @@
 # Hand Controller
 
-Control PC games using hand gestures detected through your webcam. Uses Google's MediaPipe to track hand landmarks in real time and maps gestures to keyboard input with one hand, and to mouse movement/clicks/scroll with the other — no controller required.
+Control PC games using hand gestures detected through your webcam. Uses Google's MediaPipe to track hand landmarks in real time and maps gestures to keyboard input with one hand, and to mouse movement/clicks/scroll with the other, no controller required.
 
 ---
 ## How It Works
 
 Your webcam feed is processed by MediaPipe's hand landmark model, which tracks 21 points per hand, on up to two hands at once. One hand (configurable) is your **keyboard hand**: its landmarks are normalized and fed into a small trained classifier that recognizes 10 static gestures and presses/releases the mapped key. The other hand is your **mouse hand**: its movement is tracked like a trackpad, and pinches/finger poses drive clicks, drags, and scrolling.
 
-If no trained classifier model exists yet, the keyboard hand falls back to the original hardcoded threshold-based detection, so the app works out of the box on a fresh clone — see [Training Your Own Gestures](#training-your-own-gestures) to replace it with a model trained on your own hand.
+If no trained classifier model exists yet, the keyboard hand falls back to the original hardcoded threshold-based detection, so the app works out of the box on a fresh clone, see [Training Your Own Gestures](#training-your-own-gestures) to replace it with a model trained on your own hand.
 
 ---
 
@@ -90,7 +90,7 @@ python handcontroller/hand_controller.py
 
 ## Handedness Calibration
 
-MediaPipe reports each detected hand as `"Left"` or `"Right"` based on real-world handedness. Because the webcam frame is mirrored before detection (so the preview feels like a mirror), which physical hand ends up labeled which way can vary by setup — so it's a one-time calibration step rather than a hardcoded assumption:
+MediaPipe reports each detected hand as `"Left"` or `"Right"` based on real-world handedness. Because the webcam frame is mirrored before detection (so the preview feels like a mirror), which physical hand ends up labeled which way can vary by setup, so it's a one-time calibration step rather than a hardcoded assumption:
 
 1. Run `hand_controller.py` and raise each hand one at a time.
 2. Note which label (`Left`/`Right`) the overlay prints next to each physical hand.
@@ -122,6 +122,18 @@ Prints a classification report on a held-out test split so you can sanity-check 
 
 ---
 
+## Calibrate Mouse Range
+
+If the cursor can't reach every edge of the screen (common cause: your camera frame's aspect ratio doesn't give you equal comfortable movement room in both directions), calibrate your own usable range once:
+
+```bash
+python handcontroller/calibrate_mouse.py
+```
+
+Follow the 4 on-screen prompts — move your mouse hand to your comfortable leftmost, rightmost, topmost, and bottommost positions, pressing `SPACE` at each (press `r` to redo the previous stage, `q` to cancel). This saves `handcontroller/data/mouse_calibration.json`, and `hand_controller.py` picks it up automatically on the next run — moving through that same range now maps to the full screen in each direction. Delete that file to fall back to the default `MOUSE_SENSITIVITY`-based behavior.
+
+---
+
 ## Tuning
 
 Tunable values live in `handcontroller/config.py`:
@@ -142,14 +154,16 @@ DETECTION_SIZE = (480, 360)  # set to None to disable downscaling
 CLASSIFIER_CONFIDENCE_THRESHOLD = 0.7  # minimum predicted-class probability to trigger a key
 
 # Mouse control
-MOUSE_SENSITIVITY   = 4.0   # hand-movement-to-cursor-speed multiplier
+MOUSE_SENSITIVITY     = 4.0   # fallback sensitivity when no calibration exists (see calibrate_mouse.py)
+MOUSE_CALIBRATED_GAIN_X = 1.5 # extra gain on top of your calibrated range, X axis
+MOUSE_CALIBRATED_GAIN_Y = 2.0 # extra gain on top of your calibrated range, Y axis (raise if top/bottom falls short)
 MOUSE_ACCEL_GAIN    = 0.0   # 0 = linear; >0 adds speed-based acceleration
 PINCH_CLOSE_RATIO   = 0.35  # pinch distance (normalized) below which a pinch registers
 PINCH_OPEN_RATIO    = 0.5   # must widen past this to count as released (hysteresis, avoids flicker)
 SCROLL_SENSITIVITY  = 15.0
 ```
 
-Run with `--debug-timing` to see live FPS and MediaPipe inference latency on-screen and printed once per second in the console — useful when tuning `DETECTION_SIZE` or judging whether the pipeline is actually the bottleneck versus, say, your webcam's own buffering.
+Run with `--debug-timing` to see live FPS and MediaPipe inference latency on-screen and printed once per second in the console, so it's useful when tuning `DETECTION_SIZE` or judging whether the pipeline is actually the bottleneck versus, say, your webcam's own buffering.
 
 **Tips for best detection:**
 - Keep your hand 30–60cm from the camera
@@ -171,11 +185,14 @@ hand-controller/
     ├── debounce.py                # Frame-counter hysteresis helper
     ├── legacy_gestures.py        # Original hardcoded threshold gesture detection (fallback)
     ├── mouse_control.py          # Relative mouse movement + pinch click/drag/scroll
+    ├── mouse_calibration.py      # Load/save the calibrated mouse range
+    ├── calibrate_mouse.py        # Interactive mouse range calibration tool
+    ├── camera.py                  # Threaded webcam grabber (avoids stale buffered frames)
     ├── KeyBinds.py                # Maps gesture names to keyboard keys
     ├── capture_gestures.py       # Data capture tool for training your own gesture classifier
     ├── train_gesture_model.py    # Trains a classifier from captured data
     ├── hand_landmarker.task       # MediaPipe model (auto-downloaded on first run)
-    ├── data/                      # Captured gesture datasets (gitignored)
+    ├── data/                      # Captured gesture datasets + mouse calibration (gitignored)
     └── models/                    # Trained classifier models (gitignored)
 ```
 

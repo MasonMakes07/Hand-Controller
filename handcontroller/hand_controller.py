@@ -108,6 +108,11 @@ def main():
 
     keybinds = InputController()
     mouse_ctrl = MouseController()
+    if mouse_ctrl.bounds is not None:
+        print("Using calibrated mouse range.")
+    else:
+        print("No mouse calibration found -- using default MOUSE_SENSITIVITY. "
+              "Run calibrate_mouse.py if the cursor can't reach every edge of the screen.")
 
     model = None if args.legacy else load_classifier()
     if model is not None:
