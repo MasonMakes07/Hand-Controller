@@ -24,8 +24,8 @@ If no trained classifier model exists yet, the keyboard hand falls back to the o
 | 🤚 Open Hand | `Space` |
 | ✊ Fist | `Z` |
 | 👍 Thumbs Up | `E` |
-| 🤙 Finger Gun | `R` |
-| 👌 OK Sign | `Q` |
+| 🤙 Finger Gun | `Q` |
+| 👌 OK Sign | `R` |
 | 🖕 Middle Finger | `F` |
 
 > Keybinds can be changed in `KeyBinds.py`. The gesture label list itself lives in `config.py` (`KEYBOARD_GESTURE_LABELS`).
