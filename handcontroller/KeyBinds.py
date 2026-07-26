@@ -3,7 +3,7 @@ from pynput.keyboard import Controller as KeyboardController, Key
 class InputController:
     def __init__(self):
         self.keyboard = KeyboardController()
-
+        #keybinds tested on Hades
         self.gesture_to_key = {
             'pointing':      'w',       # move forward
             'peace_sign':    'a',       # move left

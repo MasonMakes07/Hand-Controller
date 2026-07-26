@@ -16,6 +16,7 @@ from pynput.mouse import Button, Controller as PynputMouseController
 import config
 import gesture_features
 import mouse_calibration
+from one_euro_filter import OneEuroFilter
 
 NON_THUMB_FINGERS = (1, 2, 3, 4)  # index, middle, ring, pinky
 REF_LANDMARK = 9  # middle-finger MCP: stable on the palm regardless of finger curl
@@ -30,6 +31,8 @@ class MouseController:
         self._pinch_right_active = False
         self._prev_ref_point = None
         self._prev_scroll_y = None
+        self._filter_x = OneEuroFilter(min_cutoff=config.MOUSE_FILTER_MIN_CUTOFF, beta=config.MOUSE_FILTER_BETA)
+        self._filter_y = OneEuroFilter(min_cutoff=config.MOUSE_FILTER_MIN_CUTOFF, beta=config.MOUSE_FILTER_BETA)
         self.screen_w = ctypes.windll.user32.GetSystemMetrics(0)
         self.screen_h = ctypes.windll.user32.GetSystemMetrics(1)
         self.bounds = mouse_calibration.load_calibration()
@@ -119,20 +122,21 @@ class MouseController:
 
     def _move_cursor(self, landmarks):
         raw_ref = (landmarks[REF_LANDMARK].x, landmarks[REF_LANDMARK].y)
+
+        # 1-euro filter: heavily smooths the landmark position while it's
+        # nearly still (kills jitter), but automatically lets more through
+        # as estimated velocity rises (stays responsive during real movement).
+        smoothed_ref = (self._filter_x.filter(raw_ref[0]), self._filter_y.filter(raw_ref[1]))
+
         if self._prev_ref_point is None:
-            self._prev_ref_point = raw_ref
+            self._prev_ref_point = smoothed_ref
             return
 
-        # Exponential smoothing: _prev_ref_point tracks a smoothed position,
-        # only moving a fraction (MOUSE_SMOOTHING) of the way toward the raw
-        # landmark each frame. This is what actually gets diffed for movement,
-        # so per-frame landmark jitter gets damped instead of driving the
-        # cursor directly. 1.0 = no smoothing (raw delta, old behavior).
-        delta_x = (raw_ref[0] - self._prev_ref_point[0]) * config.MOUSE_SMOOTHING
-        delta_y = (raw_ref[1] - self._prev_ref_point[1]) * config.MOUSE_SMOOTHING
-        self._prev_ref_point = (self._prev_ref_point[0] + delta_x, self._prev_ref_point[1] + delta_y)
+        delta_x = smoothed_ref[0] - self._prev_ref_point[0]
+        delta_y = smoothed_ref[1] - self._prev_ref_point[1]
+        self._prev_ref_point = smoothed_ref
 
-        # Dead zone: residual jitter that survives smoothing still shouldn't
+        # Dead zone: residual jitter that survives filtering still shouldn't
         # move the cursor at all when the hand is essentially holding still.
         if abs(delta_x) < config.MOUSE_DEADZONE:
             delta_x = 0.0

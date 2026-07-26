@@ -158,8 +158,9 @@ MOUSE_SENSITIVITY     = 4.0   # fallback sensitivity when no calibration exists 
 MOUSE_CALIBRATED_GAIN_X = 1.5 # extra gain on top of your calibrated range, X axis
 MOUSE_CALIBRATED_GAIN_Y = 2.0 # extra gain on top of your calibrated range, Y axis (raise if top/bottom falls short)
 MOUSE_ACCEL_GAIN    = 0.0   # 0 = linear; >0 adds speed-based acceleration
-MOUSE_SMOOTHING     = 0.3   # 0..1: how much of each frame's raw movement is applied; lower = smoother but laggier
-MOUSE_DEADZONE      = 0.0025 # normalized units: smoothed movement below this doesn't move the cursor at all
+MOUSE_FILTER_MIN_CUTOFF = 0.4  # lower = smoother while nearly still, at the cost of a bit more initial lag
+MOUSE_FILTER_BETA   = 8.0   # higher = sheds smoothing faster (less lag) once you're moving with real speed
+MOUSE_DEADZONE      = 0.0015 # normalized units: filtered movement below this doesn't move the cursor at all
 PINCH_CLOSE_RATIO   = 0.35  # pinch distance (normalized) below which a pinch registers
 PINCH_OPEN_RATIO    = 0.5   # must widen past this to count as released (hysteresis, avoids flicker)
 SCROLL_SENSITIVITY  = 15.0
@@ -187,6 +188,7 @@ hand-controller/
     ├── debounce.py                # Frame-counter hysteresis helper
     ├── legacy_gestures.py        # Original hardcoded threshold gesture detection (fallback)
     ├── mouse_control.py          # Relative mouse movement + pinch click/drag/scroll
+    ├── one_euro_filter.py         # Adaptive cursor smoothing (jitter suppression)
     ├── mouse_calibration.py      # Load/save the calibrated mouse range
     ├── calibrate_mouse.py        # Interactive mouse range calibration tool
     ├── camera.py                  # Threaded webcam grabber (avoids stale buffered frames)

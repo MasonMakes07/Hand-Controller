@@ -82,9 +82,12 @@ MOUSE_ACCEL_GAIN = 0.0  # 0 = linear movement; >0 adds speed-based acceleration
 
 # Cursor stabilization -- landmark tracking jitters slightly even when your
 # hand is still, which gets amplified by the sensitivity/gain multipliers
-# above into a visibly shaky cursor.
-MOUSE_SMOOTHING = 0.3  # 0..1: fraction of each frame's raw movement that's actually applied; 1.0 = no smoothing (raw, old behavior)
-MOUSE_DEADZONE = 0.0025  # normalized units: smoothed movement below this is treated as zero (kills residual jitter when "still")
+# above into a visibly shaky cursor. Uses a 1-euro filter (one_euro_filter.py):
+# heavy smoothing near-zero velocity, backing off automatically once you're
+# actually moving, so it's not a single fixed lag-vs-jitter tradeoff.
+MOUSE_FILTER_MIN_CUTOFF = 0.4  # lower = smoother when nearly still, but more lag right as you start moving
+MOUSE_FILTER_BETA = 8.0  # higher = faster to shed smoothing (less lag) once you're moving with real speed
+MOUSE_DEADZONE = 0.0015  # normalized units: filtered movement below this is treated as zero (kills any residual jitter)
 
 PINCH_CLOSE_RATIO = 0.35  # pinch_ratio below this counts as "pinched"
 PINCH_OPEN_RATIO = 0.5  # pinch_ratio must rise above this to count as "released"
