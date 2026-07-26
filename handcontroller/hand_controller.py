@@ -1,220 +1,176 @@
-import cv2 as cv
-import mediapipe as mp
-from mediapipe.tasks import python
-from mediapipe.tasks.python import vision
+import argparse
+import os
 import threading
-from dataclasses import dataclass
-import math
 
+import cv2 as cv
+import joblib
+import mediapipe as mp
+
+import config
+import gesture_features
+import legacy_gestures
+import tracker
+from debounce import Debouncer
 from KeyBinds import InputController
+from mouse_control import MouseController
 
+KEYBOARD_MODEL_PATH = os.path.join(config.MODELS_DIR, "gesture_classifier_keyboard.joblib")
 
-@dataclass
-class Point:
-    x: float
-    y: float
-    z: float
+latest_hands = {"Left": None, "Right": None}
+hands_lock = threading.Lock()
 
-
-def distance(a: Point, b: Point) -> float:
-    return math.hypot(a.x - b.x, a.y - b.y)
-
-
-fingertip_indices = [4, 8, 12, 16, 20]
-knuckle_indices   = [3, 7, 11, 15, 19]
-
-model_path = "handcontroller\hand_landmarker.task"
-
-THRESHOLD = 0.02  # raise if false positives, lower if gestures won't trigger
-thumb_THRESHOLD = 0.06
-REQUIRED_FRAMES = 2  # raise to reduce flicker, lower for faster response
-
-
-def finger_up(landmarks, i):
-    return landmarks[fingertip_indices[i]].y < landmarks[knuckle_indices[i]].y - THRESHOLD
-
-def finger_down(landmarks, i):
-    return landmarks[fingertip_indices[i]].y > landmarks[knuckle_indices[i]].y + THRESHOLD
-
-def thumb_out(landmarks):
-    return abs(landmarks[4].x - landmarks[5].x) > thumb_THRESHOLD
-
-def thumb_in(landmarks):
-    return abs(landmarks[4].x - landmarks[5].x <= thumb_THRESHOLD)
-
-
-def is_fist(landmarks):
-    return thumb_in(landmarks) and all(finger_down(landmarks, i) for i in range(1, 5))
-
-def is_open_hand(landmarks):
-    return thumb_out(landmarks) and all(finger_up(landmarks, i) for i in range(1, 5))
-
-def is_pointing(landmarks): 
-    return (thumb_in(landmarks) and
-            finger_up(landmarks, 1) and
-            finger_down(landmarks, 2) and
-            finger_down(landmarks, 3) and
-            finger_down(landmarks, 4))
-
-def is_peace_sign(landmarks):
-    return (finger_up(landmarks, 1) and
-            finger_up(landmarks, 2) and
-            finger_down(landmarks, 3) and
-            finger_down(landmarks, 4))
-
-def is_three(landmarks):
-    return (finger_up(landmarks, 1) and
-            finger_up(landmarks, 2) and
-            finger_up(landmarks, 3) and
-            finger_down(landmarks, 4))
-
-def is_four(landmarks):
-    return (thumb_in(landmarks) and
-            finger_up(landmarks, 1) and
-            finger_up(landmarks, 2) and
-            finger_up(landmarks, 3) and
-            finger_up(landmarks, 4))
-
-def is_thumb_up(landmarks):
-    return (thumb_out(landmarks) and
-            finger_down(landmarks, 1) and
-            finger_down(landmarks, 2) and
-            finger_down(landmarks, 3) and
-            finger_down(landmarks, 4))
-
-def is_finger_gun(landmarks):
-    return (thumb_out(landmarks) and
-            finger_up(landmarks, 1) and
-            finger_down(landmarks, 2) and
-            finger_down(landmarks, 3) and
-            finger_down(landmarks, 4))
-
-def is_ok_sign(landmarks):
-    return (thumb_in(landmarks) and
-            finger_down(landmarks, 1) and
-            finger_up(landmarks, 2) and
-            finger_up(landmarks, 3) and
-            finger_up(landmarks, 4))
-
-def is_middle_finger(landmarks):
-    return (thumb_in(landmarks) and
-            finger_down(landmarks, 1) and
-            finger_up(landmarks, 2) and
-            finger_down(landmarks, 3) and
-            finger_down(landmarks, 4))
-
-
-GESTURE_CHECKS = {
-    'fist':          is_fist,
-    'open_hand':     is_open_hand,
-    'pointing':      is_pointing,
-    'peace_sign':    is_peace_sign,
-    'three':         is_three,
-    'four':          is_four,
-    'thumbs_up':     is_thumb_up,
-    'finger_gun':    is_finger_gun,
-    'ok_sign':       is_ok_sign,
-    'middle_finger': is_middle_finger
-}
-
-latest_landmarks = None
-landmarks_lock   = threading.Lock()
 
 def on_result(result, output_image, timestamp_ms):
-    global latest_landmarks
-    with landmarks_lock:
-        if result.hand_landmarks:
-            latest_landmarks = result.hand_landmarks[0]
+    global latest_hands
+    with hands_lock:
+        latest_hands = {"Left": None, "Right": None}
+        for landmarks, handedness in zip(result.hand_landmarks, result.handedness):
+            label = handedness[0].category_name
+            latest_hands[label] = landmarks
+
+
+def load_classifier():
+    if not os.path.exists(KEYBOARD_MODEL_PATH):
+        return None
+    bundle = joblib.load(KEYBOARD_MODEL_PATH)
+    return bundle["model"]
+
+
+def classify_keyboard_gesture(model, landmarks):
+    features = gesture_features.extract_features(landmarks)
+    probs = model.predict_proba([features])[0]
+    top_idx = probs.argmax()
+    top_label = model.classes_[top_idx]
+    confidence = probs[top_idx]
+    if top_label == "none" or confidence < config.CLASSIFIER_CONFIDENCE_THRESHOLD:
+        return set()
+    return {top_label}
+
+
+# Gestures that share the same finger pattern and differ only by thumb
+# position can both fire on the same frame due to the thumb_in bug in
+# legacy_gestures.py (see its docstring). Rather than patch that frozen
+# module, ambiguous pairs are resolved here: the key (winner) suppresses
+# the values (losers) whenever both are active at once.
+GESTURE_PRIORITY_OVERRIDES = {
+    "finger_gun": {"pointing"},
+}
+
+
+def resolve_gesture_conflicts(active: set) -> set:
+    resolved = set(active)
+    for winner, losers in GESTURE_PRIORITY_OVERRIDES.items():
+        if winner in resolved:
+            resolved -= losers
+    return resolved
+
+
+def draw_landmarks(image, landmarks, label):
+    h, w = image.shape[:2]
+    for idx, lm in enumerate(landmarks):
+        cx, cy = int(lm.x * w), int(lm.y * h)
+        if idx in gesture_features.FINGERTIP_INDICES:
+            color = (0, 0, 255)  # red
+        elif idx in gesture_features.KNUCKLE_INDICES:
+            color = (0, 255, 255)  # yellow
         else:
-            latest_landmarks = None
+            color = (255, 255, 255)  # white
+        cv.circle(image, (cx, cy), 6, color, -1)
+    wrist = landmarks[0]
+    cv.putText(image, label, (int(wrist.x * w), int(wrist.y * h) + 20),
+               cv.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
 
 
-if __name__ == "__main__":
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--legacy", action="store_true",
+                         help="Force legacy threshold-based gesture detection even if a trained model exists")
+    args = parser.parse_args()
+
     print("Starting hand controller")
 
     keybinds = InputController()
+    mouse_ctrl = MouseController()
 
-    BaseOptions           = mp.tasks.BaseOptions
-    HandLandmarker        = mp.tasks.vision.HandLandmarker
-    HandLandmarkerOptions = mp.tasks.vision.HandLandmarkerOptions
-    VisionRunningMode     = mp.tasks.vision.RunningMode
+    model = None if args.legacy else load_classifier()
+    if model is not None:
+        print("Using trained gesture classifier for keyboard hand.")
+        gesture_names = [name for name in config.KEYBOARD_GESTURE_LABELS if name != "none"]
+    else:
+        print("No trained gesture model found (or --legacy passed) -- "
+              "using legacy threshold detection. Run capture_gestures.py and "
+              "train_gesture_model.py to switch to the classifier.")
+        gesture_names = list(legacy_gestures.GESTURE_CHECKS.keys())
 
-    options = HandLandmarkerOptions(
-        base_options=BaseOptions(model_asset_path=model_path),
-        running_mode=VisionRunningMode.LIVE_STREAM,
-        num_hands=2,
-        min_hand_detection_confidence=0.7,
-        min_hand_presence_confidence=0.4,
-        min_tracking_confidence=0.4,
-        result_callback=on_result
-    )
-    landmarker = HandLandmarker.create_from_options(options)
+    debouncer = Debouncer(gesture_names, config.REQUIRED_FRAMES)
+
+    landmarker = tracker.create_landmarker(on_result, num_hands=2)
 
     cap = cv.VideoCapture(0)
     if not cap.isOpened():
         print("Unable to access camera")
-        exit()
+        return
 
-    gesture_frames = {name: 0 for name in GESTURE_CHECKS}
-    timestamp = 0  # must increment every frame or MediaPipe rejects frames
-
-    print("Press 'p' to quit. Make a gesture to start.")
+    timestamp = 0
+    print("Press 'p' to quit.")
 
     while cap.isOpened():
         success, image = cap.read()
-        image = cv.flip(image, 1)
         if not success:
             break
+        image = cv.flip(image, 1)
         rgb_image = cv.cvtColor(image, cv.COLOR_BGR2RGB)
-        mp_image  = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_image)
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_image)
         timestamp += 1
         landmarker.detect_async(mp_image, timestamp)
 
-        # Read latest landmarks written by on_result
-        with landmarks_lock:
-            landmarks = latest_landmarks
+        with hands_lock:
+            keyboard_lm = latest_hands.get(config.KEYBOARD_HAND_LABEL)
+            mouse_lm = latest_hands.get(config.MOUSE_HAND_LABEL)
+            snapshot = dict(latest_hands)
 
-        if landmarks:
-            for name, check_fn in GESTURE_CHECKS.items():
-                detected = check_fn(landmarks)
-                if detected:
-                    gesture_frames[name] = min(gesture_frames[name] + 1, REQUIRED_FRAMES)
-                else:
-                    gesture_frames[name] = max(gesture_frames[name] - 1, 0)
-                keybinds.set_gestures(name, gesture_frames[name] >= REQUIRED_FRAMES)
+        if keyboard_lm is not None:
+            if model is not None:
+                active = classify_keyboard_gesture(model, keyboard_lm)
+            else:
+                active = {name for name, check in legacy_gestures.GESTURE_CHECKS.items() if check(keyboard_lm)}
         else:
-            gesture_frames = {name: 0 for name in GESTURE_CHECKS}
+            active = set()
+
+        active = resolve_gesture_conflicts(active)
+        latched = debouncer.update(active)
+        for name in gesture_names:
+            keybinds.set_gestures(name, latched[name])
+        if keyboard_lm is None:
             keybinds.release_all()
 
-        #Debugging Overlays
-        #Comment out if you want, not needed
-        
-        #Landmarks for visualizations
-        if landmarks:
-            h, w = image.shape[:2]
-            for idx, lm in enumerate(landmarks):
-                cx, cy = int(lm.x * w), int(lm.y * h)
-                # Highlight fingertips in red, knuckles in yellow, rest in white
-                if idx in fingertip_indices:
-                    color = (0, 0, 255)   # red
-                elif idx in knuckle_indices:
-                    color = (0, 255, 255) # yellow
-                else:
-                    color = (255, 255, 255) # white
-                cv.circle(image, (cx, cy), 6, color, -1)
-                cv.putText(image, str(idx), (cx + 6, cy - 6),
-                           cv.FONT_HERSHEY_SIMPLEX, 0.35, color, 1)
-        active = [name for name, count in gesture_frames.items() if count >= REQUIRED_FRAMES]
-        cv.putText(image,
-                   f"Gesture: {', '.join(active) if active else 'none'}",
-                   (10, 30), cv.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
-        
+        mouse_info = mouse_ctrl.update(mouse_lm)
 
-        cv.imshow('Hand Controller', image)
-        if cv.waitKey(1) & 0xFF == ord('p'):
+        for label, landmarks in snapshot.items():
+            if landmarks is not None:
+                draw_landmarks(image, landmarks, label)
+
+        active_names = [name for name, is_active in latched.items() if is_active]
+        cv.putText(image, f"Keyboard ({config.KEYBOARD_HAND_LABEL}): {', '.join(active_names) or 'none'}",
+                   (10, 30), cv.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+        cv.putText(image, f"Mouse ({config.MOUSE_HAND_LABEL}): {mouse_info['state']}",
+                   (10, 55), cv.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+        if "pinch_left_ratio" in mouse_info:
+            cv.putText(image,
+                       f"pinch L/R: {mouse_info['pinch_left_ratio']:.2f} / {mouse_info['pinch_right_ratio']:.2f}"
+                       f"  (close<{config.PINCH_CLOSE_RATIO} open>{config.PINCH_OPEN_RATIO})",
+                       (10, 78), cv.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 0), 1)
+
+        cv.imshow("Hand Controller", image)
+        if cv.waitKey(1) & 0xFF == ord("p"):
             break
 
     cap.release()
     keybinds.release_all()
+    mouse_ctrl.release_all()
     cv.destroyAllWindows()
     landmarker.close()
+
+
+if __name__ == "__main__":
+    main()
