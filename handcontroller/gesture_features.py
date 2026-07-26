@@ -15,9 +15,10 @@ MIDDLE_MCP = 9
 FINGERTIP_INDICES = [4, 8, 12, 16, 20]
 KNUCKLE_INDICES = [3, 7, 11, 15, 19]
 
-# How far (in reference-distance units) a fingertip must clear its knuckle
-# to count as "extended" for the geometric checks (mouse engage/disengage).
-EXTEND_RATIO_THRESHOLD = 0.4
+# How far (in reference-distance units) a fingertip's radial distance from
+# the wrist must exceed its knuckle's to count as "extended" for the
+# geometric checks (mouse engage/disengage, scroll pose).
+EXTEND_RATIO_THRESHOLD = 0.15
 
 
 def landmarks_to_array(landmarks) -> np.ndarray:
@@ -58,13 +59,19 @@ def extract_features(landmarks) -> np.ndarray:
 def finger_curl(landmarks, finger_idx: int) -> float:
     """How far finger `finger_idx` (1=index..4=pinky) is extended.
 
-    Positive and above EXTEND_RATIO_THRESHOLD means extended; near zero or
-    negative means curled into the palm. Scale-invariant via normalization.
+    Measured as (fingertip's radial distance from the wrist) minus (its
+    knuckle's radial distance from the wrist). Positive and above
+    EXTEND_RATIO_THRESHOLD means extended -- the tip sticks out further from
+    the wrist than the knuckle, regardless of which direction the finger
+    points in frame. Curled fingers fold the tip back toward the wrist, so
+    this stays near zero or goes negative. Using radial distance rather than
+    a single axis (e.g. vertical position) keeps this rotation-invariant:
+    a sideways or upside-down hand reads the same as an upright one.
     """
     normalized = normalize_landmarks(landmarks)
-    tip = normalized[FINGERTIP_INDICES[finger_idx]]
-    knuckle = normalized[KNUCKLE_INDICES[finger_idx]]
-    return float(knuckle[1] - tip[1])
+    tip_dist = float(np.linalg.norm(normalized[FINGERTIP_INDICES[finger_idx]]))
+    knuckle_dist = float(np.linalg.norm(normalized[KNUCKLE_INDICES[finger_idx]]))
+    return tip_dist - knuckle_dist
 
 
 def is_finger_extended(landmarks, finger_idx: int) -> bool:
