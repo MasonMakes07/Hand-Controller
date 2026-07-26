@@ -179,25 +179,25 @@ Run with `--debug-timing` to see live FPS and MediaPipe inference latency on-scr
 
 ```
 hand-controller/
-├── requirements.txt              # Python dependencies
+├── requirements.txt           # Python dependencies
 └── handcontroller/
-    ├── hand_controller.py        # Main script — two-hand tracking, keyboard + mouse pipelines
-    ├── config.py                 # Tunables, gesture label lists, handedness role mapping
-    ├── gesture_features.py       # Landmark normalization + feature extraction (shared by all scripts)
-    ├── tracker.py                 # Shared MediaPipe HandLandmarker setup
-    ├── debounce.py                # Frame-counter hysteresis helper
-    ├── legacy_gestures.py        # Original hardcoded threshold gesture detection (fallback)
-    ├── mouse_control.py          # Relative mouse movement + pinch click/drag/scroll
-    ├── one_euro_filter.py         # Adaptive cursor smoothing (jitter suppression)
-    ├── mouse_calibration.py      # Load/save the calibrated mouse range
-    ├── calibrate_mouse.py        # Interactive mouse range calibration tool
-    ├── camera.py                  # Threaded webcam grabber (avoids stale buffered frames)
-    ├── KeyBinds.py                # Maps gesture names to keyboard keys
-    ├── capture_gestures.py       # Data capture tool for training your own gesture classifier
-    ├── train_gesture_model.py    # Trains a classifier from captured data
-    ├── hand_landmarker.task       # MediaPipe model (auto-downloaded on first run)
-    ├── data/                      # Captured gesture datasets + mouse calibration (gitignored)
-    └── models/                    # Trained classifier models (gitignored)
+    ├── hand_controller.py     # Main script -- two-hand tracking, keyboard + mouse pipelines
+    ├── config.py              # Tunables, gesture label lists, handedness role mapping
+    ├── gesture_features.py    # Landmark normalization + feature extraction (shared by all scripts)
+    ├── tracker.py             # Shared MediaPipe HandLandmarker setup
+    ├── camera.py              # Threaded webcam grabber (avoids stale buffered frames)
+    ├── debounce.py            # Asymmetric frame-counter hysteresis (keyboard gesture press/release)
+    ├── legacy_gestures.py     # Original hardcoded threshold gesture detection (fallback)
+    ├── KeyBinds.py            # Maps gesture names to keyboard keys
+    ├── mouse_control.py       # Relative mouse movement + pinch press-and-hold (click/drag) + scroll
+    ├── one_euro_filter.py     # Adaptive cursor smoothing (jitter suppression)
+    ├── mouse_calibration.py   # Load/save the calibrated mouse range
+    ├── calibrate_mouse.py     # Interactive mouse range calibration tool
+    ├── capture_gestures.py    # Data capture tool for training your own gesture classifier
+    ├── train_gesture_model.py # Trains a classifier from captured data
+    ├── hand_landmarker.task   # MediaPipe model (auto-downloaded on first run)
+    ├── data/                  # Captured gesture datasets + mouse calibration (gitignored)
+    └── models/                # Trained classifier models (gitignored)
 ```
 
 ---
