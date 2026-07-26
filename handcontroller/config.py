@@ -79,14 +79,16 @@ MOUSE_CALIBRATED_GAIN_X = 1.5
 MOUSE_CALIBRATED_GAIN_Y = 2.0
 
 MOUSE_ACCEL_GAIN = 0.0  # 0 = linear movement; >0 adds speed-based acceleration
+
+# Cursor stabilization -- landmark tracking jitters slightly even when your
+# hand is still, which gets amplified by the sensitivity/gain multipliers
+# above into a visibly shaky cursor.
+MOUSE_SMOOTHING = 0.3  # 0..1: fraction of each frame's raw movement that's actually applied; 1.0 = no smoothing (raw, old behavior)
+MOUSE_DEADZONE = 0.0025  # normalized units: smoothed movement below this is treated as zero (kills residual jitter when "still")
+
 PINCH_CLOSE_RATIO = 0.35  # pinch_ratio below this counts as "pinched"
 PINCH_OPEN_RATIO = 0.5  # pinch_ratio must rise above this to count as "released"
 SCROLL_SENSITIVITY = 15.0
-
-# A single thumb+index pinch is a left-click. A second pinch starting within
-# this many seconds of the first one's release escalates to a drag (held
-# for as long as that second pinch is held) instead of firing another click.
-DOUBLE_PINCH_WINDOW = 0.4
 
 # Minimum acceptable left-right / top-bottom spread (normalized units) for a
 # calibrate_mouse.py run to be considered valid, rather than saving a

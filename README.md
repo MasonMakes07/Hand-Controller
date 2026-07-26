@@ -36,9 +36,8 @@ If no trained classifier model exists yet, the keyboard hand falls back to the o
 |---|---|
 | ✊ Closed fist | Pause tracking (like lifting your finger off a trackpad) |
 | 🤚 Open hand, moving | Move cursor (relative movement, like a trackpad) |
-| 🤏 Thumb + index pinch, once | Left click |
-| 🤏 🤏 Thumb + index pinch twice quickly, hold the 2nd | Left-button drag |
-| 🤏 Thumb + middle pinch | Right click |
+| 🤏 Thumb + index pinch, held | Left button held down (quick pinch = click, hold + move = drag) |
+| 🤏 Thumb + middle pinch, held | Right button held down (quick pinch = right-click, hold + move = right-drag) |
 | ✌️ Index + middle extended, moving up/down | Scroll |
 
 ---
@@ -159,10 +158,11 @@ MOUSE_SENSITIVITY     = 4.0   # fallback sensitivity when no calibration exists 
 MOUSE_CALIBRATED_GAIN_X = 1.5 # extra gain on top of your calibrated range, X axis
 MOUSE_CALIBRATED_GAIN_Y = 2.0 # extra gain on top of your calibrated range, Y axis (raise if top/bottom falls short)
 MOUSE_ACCEL_GAIN    = 0.0   # 0 = linear; >0 adds speed-based acceleration
+MOUSE_SMOOTHING     = 0.3   # 0..1: how much of each frame's raw movement is applied; lower = smoother but laggier
+MOUSE_DEADZONE      = 0.0025 # normalized units: smoothed movement below this doesn't move the cursor at all
 PINCH_CLOSE_RATIO   = 0.35  # pinch distance (normalized) below which a pinch registers
 PINCH_OPEN_RATIO    = 0.5   # must widen past this to count as released (hysteresis, avoids flicker)
 SCROLL_SENSITIVITY  = 15.0
-DOUBLE_PINCH_WINDOW = 0.4   # seconds: a 2nd pinch within this window of the 1st's release becomes a drag
 ```
 
 Run with `--debug-timing` to see live FPS and MediaPipe inference latency on-screen and printed once per second in the console, so it's useful when tuning `DETECTION_SIZE` or judging whether the pipeline is actually the bottleneck versus, say, your webcam's own buffering.

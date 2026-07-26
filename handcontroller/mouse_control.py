@@ -2,17 +2,14 @@
 
 State priority per frame (first match wins), mirroring a touchpad:
     1. Hand closed into a fist              -> paused (cursor frozen, no drag)
-    2. Thumb+index pinch                    -> single pinch = left-click (on release);
-                                                a second pinch within DOUBLE_PINCH_WINDOW
-                                                of the first one's release escalates to
-                                                a left-button drag for as long as it's held
-    3. Thumb+middle pinch (edge only)       -> single right-click
+    2. Thumb+index pinch, held              -> left button held down for as long as the
+                                                pinch is held (quick pinch = click, hold+move = drag)
+    3. Thumb+middle pinch, held              -> right button held down for as long as the pinch is held
     4. Index+middle extended, others curled -> two-finger scroll
     5. Otherwise (hand open, engaged)       -> relative cursor move
 """
 
 import ctypes
-import time
 
 from pynput.mouse import Button, Controller as PynputMouseController
 
@@ -27,12 +24,10 @@ REF_LANDMARK = 9  # middle-finger MCP: stable on the palm regardless of finger c
 class MouseController:
     def __init__(self):
         self.mouse = PynputMouseController()
-        self._dragging = False
+        self._left_held = False
+        self._right_held = False
         self._pinch_left_active = False
         self._pinch_right_active = False
-        self._prev_pinch_left_active = False
-        self._prev_pinch_right_active = False
-        self._last_left_click_time = 0.0
         self._prev_ref_point = None
         self._prev_scroll_y = None
         self.screen_w = ctypes.windll.user32.GetSystemMetrics(0)
@@ -40,9 +35,12 @@ class MouseController:
         self.bounds = mouse_calibration.load_calibration()
 
     def release_all(self):
-        if self._dragging:
+        if self._left_held:
             self.mouse.release(Button.left)
-            self._dragging = False
+            self._left_held = False
+        if self._right_held:
+            self.mouse.release(Button.right)
+            self._right_held = False
         self._prev_ref_point = None
         self._prev_scroll_y = None
 
@@ -68,39 +66,36 @@ class MouseController:
             and not gesture_features.is_finger_extended(landmarks, 4)
         )
 
-        pinch_left_edge_close = self._pinch_left_active and not self._prev_pinch_left_active
-        pinch_left_edge_open = self._prev_pinch_left_active and not self._pinch_left_active
-
         if is_paused:
             self.release_all()
             state = "paused"
         elif self._pinch_left_active:
-            now = time.perf_counter()
-            if pinch_left_edge_close and (now - self._last_left_click_time) <= config.DOUBLE_PINCH_WINDOW:
+            if self._right_held:
+                self.mouse.release(Button.right)
+                self._right_held = False
+            if not self._left_held:
                 self.mouse.press(Button.left)
-                self._dragging = True
-
-            if self._dragging:
-                self._prev_scroll_y = None
-                self._move_cursor(landmarks)
-                state = "drag"
-            else:
-                # Held but not (yet) escalated to a drag -- cursor stays frozen.
-                # Reset the movement reference so releasing later (or escalating
-                # to a drag) doesn't apply a jump built up while frozen.
-                self._prev_ref_point = None
-                state = "pinch"
-
-        else:
-            if self._dragging:
+                self._left_held = True
+            self._prev_scroll_y = None
+            self._move_cursor(landmarks)
+            state = "left_held"
+        elif self._pinch_right_active:
+            if self._left_held:
                 self.mouse.release(Button.left)
-                self._dragging = False
-            elif pinch_left_edge_open:
-                self.mouse.click(Button.left)
-                self._last_left_click_time = time.perf_counter()
-
-            if self._pinch_right_active and not self._prev_pinch_right_active:
-                self.mouse.click(Button.right)
+                self._left_held = False
+            if not self._right_held:
+                self.mouse.press(Button.right)
+                self._right_held = True
+            self._prev_scroll_y = None
+            self._move_cursor(landmarks)
+            state = "right_held"
+        else:
+            if self._left_held:
+                self.mouse.release(Button.left)
+                self._left_held = False
+            if self._right_held:
+                self.mouse.release(Button.right)
+                self._right_held = False
 
             if scroll_pose:
                 self._prev_ref_point = None
@@ -111,8 +106,6 @@ class MouseController:
                 self._move_cursor(landmarks)
                 state = "move"
 
-        self._prev_pinch_left_active = self._pinch_left_active
-        self._prev_pinch_right_active = self._pinch_right_active
         return {
             "state": state,
             "pinch_left_ratio": pinch_left_ratio,
@@ -125,14 +118,26 @@ class MouseController:
         return ratio < config.PINCH_CLOSE_RATIO
 
     def _move_cursor(self, landmarks):
-        ref_point = (landmarks[REF_LANDMARK].x, landmarks[REF_LANDMARK].y)
+        raw_ref = (landmarks[REF_LANDMARK].x, landmarks[REF_LANDMARK].y)
         if self._prev_ref_point is None:
-            self._prev_ref_point = ref_point
+            self._prev_ref_point = raw_ref
             return
 
-        delta_x = ref_point[0] - self._prev_ref_point[0]
-        delta_y = ref_point[1] - self._prev_ref_point[1]
-        self._prev_ref_point = ref_point
+        # Exponential smoothing: _prev_ref_point tracks a smoothed position,
+        # only moving a fraction (MOUSE_SMOOTHING) of the way toward the raw
+        # landmark each frame. This is what actually gets diffed for movement,
+        # so per-frame landmark jitter gets damped instead of driving the
+        # cursor directly. 1.0 = no smoothing (raw delta, old behavior).
+        delta_x = (raw_ref[0] - self._prev_ref_point[0]) * config.MOUSE_SMOOTHING
+        delta_y = (raw_ref[1] - self._prev_ref_point[1]) * config.MOUSE_SMOOTHING
+        self._prev_ref_point = (self._prev_ref_point[0] + delta_x, self._prev_ref_point[1] + delta_y)
+
+        # Dead zone: residual jitter that survives smoothing still shouldn't
+        # move the cursor at all when the hand is essentially holding still.
+        if abs(delta_x) < config.MOUSE_DEADZONE:
+            delta_x = 0.0
+        if abs(delta_y) < config.MOUSE_DEADZONE:
+            delta_y = 0.0
 
         if self.bounds is not None:
             range_x = max(self.bounds["max_x"] - self.bounds["min_x"], 1e-6)
