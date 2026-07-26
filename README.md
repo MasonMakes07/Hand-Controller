@@ -36,7 +36,8 @@ If no trained classifier model exists yet, the keyboard hand falls back to the o
 |---|---|
 | ✊ Closed fist | Pause tracking (like lifting your finger off a trackpad) |
 | 🤚 Open hand, moving | Move cursor (relative movement, like a trackpad) |
-| 🤏 Thumb + index pinch (tap / hold) | Left click / drag |
+| 🤏 Thumb + index pinch, once | Left click |
+| 🤏 🤏 Thumb + index pinch twice quickly, hold the 2nd | Left-button drag |
 | 🤏 Thumb + middle pinch | Right click |
 | ✌️ Index + middle extended, moving up/down | Scroll |
 
@@ -161,6 +162,7 @@ MOUSE_ACCEL_GAIN    = 0.0   # 0 = linear; >0 adds speed-based acceleration
 PINCH_CLOSE_RATIO   = 0.35  # pinch distance (normalized) below which a pinch registers
 PINCH_OPEN_RATIO    = 0.5   # must widen past this to count as released (hysteresis, avoids flicker)
 SCROLL_SENSITIVITY  = 15.0
+DOUBLE_PINCH_WINDOW = 0.4   # seconds: a 2nd pinch within this window of the 1st's release becomes a drag
 ```
 
 Run with `--debug-timing` to see live FPS and MediaPipe inference latency on-screen and printed once per second in the console, so it's useful when tuning `DETECTION_SIZE` or judging whether the pipeline is actually the bottleneck versus, say, your webcam's own buffering.
