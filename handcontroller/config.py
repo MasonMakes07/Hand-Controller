@@ -5,6 +5,12 @@ import os
 
 MODEL_PATH = os.path.join(os.path.dirname(__file__), "hand_landmarker.task")
 
+# Resolution the camera frame is downscaled to before MediaPipe inference
+# (the on-screen preview and overlay stay full-resolution -- landmark
+# coordinates are normalized 0-1 regardless of input size). Set to None to
+# disable downscaling.
+DETECTION_SIZE = (480, 360)
+
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 MODELS_DIR = os.path.join(os.path.dirname(__file__), "models")
 
@@ -19,7 +25,15 @@ MOUSE_HAND_LABEL = "Left"
 # --- Legacy threshold-based gesture detection (handcontroller/legacy_gestures.py) ---
 THRESHOLD = 0.02  # raise if false positives, lower if gestures won't trigger
 THUMB_THRESHOLD = 0.06
-REQUIRED_FRAMES = 2  # frames a gesture must be held before triggering / releasing
+
+# Frames a gesture must be seen before its key presses (ON) / absent before
+# it releases (OFF). Asymmetric on purpose: a fast press feels responsive
+# and flicker there is rare, while flicker on release is what's actually
+# noticeable, so it keeps a small guard. REQUIRED_FRAMES_ON=1 is safest with
+# a trained classifier (which already gates on CLASSIFIER_CONFIDENCE_THRESHOLD);
+# raise it if the noisier legacy_gestures.py fallback path feels twitchy.
+REQUIRED_FRAMES_ON = 1
+REQUIRED_FRAMES_OFF = 2
 
 # --- Learned gesture classifier -------------------------------------------
 KEYBOARD_GESTURE_LABELS = [

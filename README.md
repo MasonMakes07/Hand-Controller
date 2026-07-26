@@ -82,6 +82,7 @@ python handcontroller/hand_controller.py
 - The keyboard hand's active gesture and the mouse hand's current state are shown in the top left
 - Press `P` to quit
 - Pass `--legacy` to force the original threshold-based keyboard detection even if a trained model exists
+- Pass `--debug-timing` to show live FPS and MediaPipe inference latency on-screen and in the console
 
 > Make sure your game window is focused before gesturing so keypresses/mouse events are received by the game.
 
@@ -129,7 +130,13 @@ Tunable values live in `handcontroller/config.py`:
 # Legacy threshold-based gesture detection
 THRESHOLD        = 0.02  # how far fingers must move to register as up/down
 THUMB_THRESHOLD  = 0.06  # how far thumb must be from index base to count as "out"
-REQUIRED_FRAMES  = 2     # frames a gesture must be held before triggering/releasing
+
+# Keyboard-gesture debounce (asymmetric on purpose: fast press, guarded release)
+REQUIRED_FRAMES_ON   = 1  # frames a gesture must be seen before its key presses
+REQUIRED_FRAMES_OFF  = 2  # frames a gesture must be absent before its key releases
+
+# Frame resolution MediaPipe runs detection on (the preview window stays full-res)
+DETECTION_SIZE = (480, 360)  # set to None to disable downscaling
 
 # Learned classifier
 CLASSIFIER_CONFIDENCE_THRESHOLD = 0.7  # minimum predicted-class probability to trigger a key
@@ -141,6 +148,8 @@ PINCH_CLOSE_RATIO   = 0.35  # pinch distance (normalized) below which a pinch re
 PINCH_OPEN_RATIO    = 0.5   # must widen past this to count as released (hysteresis, avoids flicker)
 SCROLL_SENSITIVITY  = 15.0
 ```
+
+Run with `--debug-timing` to see live FPS and MediaPipe inference latency on-screen and printed once per second in the console — useful when tuning `DETECTION_SIZE` or judging whether the pipeline is actually the bottleneck versus, say, your webcam's own buffering.
 
 **Tips for best detection:**
 - Keep your hand 30–60cm from the camera

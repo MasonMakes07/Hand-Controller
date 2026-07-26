@@ -1,11 +1,14 @@
 import argparse
+import collections
 import os
 import threading
+import time
 
 import cv2 as cv
 import joblib
 import mediapipe as mp
 
+import camera
 import config
 import gesture_features
 import legacy_gestures
@@ -19,6 +22,13 @@ KEYBOARD_MODEL_PATH = os.path.join(config.MODELS_DIR, "gesture_classifier_keyboa
 latest_hands = {"Left": None, "Right": None}
 hands_lock = threading.Lock()
 
+# Timing instrumentation (only meaningfully populated when --debug-timing is
+# passed, but cheap enough to always maintain). Kept on a separate lock from
+# hands_lock so measuring latency never adds contention to that hot path.
+dispatch_times = {}
+timing_lock = threading.Lock()
+mp_latency_samples = collections.deque(maxlen=30)
+
 
 def on_result(result, output_image, timestamp_ms):
     global latest_hands
@@ -27,6 +37,11 @@ def on_result(result, output_image, timestamp_ms):
         for landmarks, handedness in zip(result.hand_landmarks, result.handedness):
             label = handedness[0].category_name
             latest_hands[label] = landmarks
+
+    with timing_lock:
+        sent_at = dispatch_times.pop(timestamp_ms, None)
+    if sent_at is not None:
+        mp_latency_samples.append(time.perf_counter() - sent_at)
 
 
 def load_classifier():
@@ -85,6 +100,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--legacy", action="store_true",
                          help="Force legacy threshold-based gesture detection even if a trained model exists")
+    parser.add_argument("--debug-timing", action="store_true",
+                         help="Show FPS and MediaPipe inference latency on-screen and in the console")
     args = parser.parse_args()
 
     print("Starting hand controller")
@@ -102,26 +119,40 @@ def main():
               "train_gesture_model.py to switch to the classifier.")
         gesture_names = list(legacy_gestures.GESTURE_CHECKS.keys())
 
-    debouncer = Debouncer(gesture_names, config.REQUIRED_FRAMES)
+    debouncer = Debouncer(gesture_names, config.REQUIRED_FRAMES_ON, config.REQUIRED_FRAMES_OFF)
 
     landmarker = tracker.create_landmarker(on_result, num_hands=2)
 
-    cap = cv.VideoCapture(0)
-    if not cap.isOpened():
+    cam = camera.CameraStream(0).start()
+    if not cam.isOpened():
+        cam.stop()
+        print("CAP_DSHOW failed to open the camera, falling back to CAP_ANY.")
+        cam = camera.CameraStream(0, backend=cv.CAP_ANY).start()
+    if not cam.isOpened():
         print("Unable to access camera")
         return
 
     timestamp = 0
+    frame_times = collections.deque(maxlen=30)
+    last_console_print = time.perf_counter()
     print("Press 'p' to quit.")
 
-    while cap.isOpened():
-        success, image = cap.read()
+    while cam.isOpened():
+        success, image = cam.read()
         if not success:
             break
+        frame_times.append(time.perf_counter())
+
         image = cv.flip(image, 1)
         rgb_image = cv.cvtColor(image, cv.COLOR_BGR2RGB)
-        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_image)
+        detect_input = (cv.resize(rgb_image, config.DETECTION_SIZE, interpolation=cv.INTER_LINEAR)
+                         if config.DETECTION_SIZE else rgb_image)
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=detect_input)
         timestamp += 1
+        with timing_lock:
+            if len(dispatch_times) > 100:
+                dispatch_times.clear()  # a result went missing somewhere; don't leak forever
+            dispatch_times[timestamp] = time.perf_counter()
         landmarker.detect_async(mp_image, timestamp)
 
         with hands_lock:
@@ -161,11 +192,21 @@ def main():
                        f"  (close<{config.PINCH_CLOSE_RATIO} open>{config.PINCH_OPEN_RATIO})",
                        (10, 78), cv.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 0), 1)
 
+        if args.debug_timing:
+            now = time.perf_counter()
+            fps = (len(frame_times) - 1) / (frame_times[-1] - frame_times[0]) if len(frame_times) >= 2 else 0.0
+            mp_latency_ms = (sum(mp_latency_samples) / len(mp_latency_samples) * 1000) if mp_latency_samples else 0.0
+            timing_text = f"FPS: {fps:.1f}  MP latency: {mp_latency_ms:.0f}ms"
+            cv.putText(image, timing_text, (10, 101), cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 200, 255), 1)
+            if now - last_console_print >= 1.0:
+                print(timing_text)
+                last_console_print = now
+
         cv.imshow("Hand Controller", image)
         if cv.waitKey(1) & 0xFF == ord("p"):
             break
 
-    cap.release()
+    cam.stop()
     keybinds.release_all()
     mouse_ctrl.release_all()
     cv.destroyAllWindows()
