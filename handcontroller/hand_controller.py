@@ -98,13 +98,22 @@ def draw_landmarks(image, landmarks, label):
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--mode", choices=("two-hand", "one-hand"), default="two-hand",
+                        help="Choose the existing two-hand controls or one-hand WASD + actions")
+    parser.add_argument("--hand", choices=("Left", "Right"), default=config.ONE_HAND_LABEL,
+                        help="MediaPipe hand label to use in one-hand mode")
     parser.add_argument("--legacy", action="store_true",
                          help="Force legacy threshold-based gesture detection even if a trained model exists")
     parser.add_argument("--debug-timing", action="store_true",
                          help="Show FPS and MediaPipe inference latency on-screen and in the console")
     args = parser.parse_args()
 
-    print("Starting hand controller")
+    if args.mode == "one-hand":
+        from one_hand_runtime import run
+        run(args, load_classifier, classify_keyboard_gesture, draw_landmarks, resolve_gesture_conflicts)
+        return
+
+    print("Starting hand controller (two-hand mode)")
 
     keybinds = InputController()
     mouse_ctrl = MouseController()

@@ -74,6 +74,49 @@ curl -o handcontroller/hand_landmarker.task "https://storage.googleapis.com/medi
 
 ## Usage
 
+Choose a mode (the existing two-hand mode remains the default):
+
+```bash
+python handcontroller/hand_controller.py --mode two-hand
+python handcontroller/hand_controller.py --mode one-hand --hand Right
+```
+
+### One-hand mode
+
+This separate mode uses one palm's position for WASD and finger gestures for
+two keyboard actions. It does not move or click the mouse. Use `--hand Left`
+if the preview labels your preferred hand `Left`; the other hand is ignored.
+
+1. Hold your hand still in a comfortable resting position for one second.
+   The controller records this as neutral, with no input during calibration.
+2. Move your palm left/right/up/down from neutral to hold A/D/W/S. Diagonal
+   movement holds two direction keys. Return inside the neutral region to stop.
+3. Make a fist to hold Space (jump), or thumbs up to hold E (interact).
+   Release the gesture to release its key. Actions also work while moving.
+
+The global hotkeys work while the game is focused: **F8** pauses/resumes,
+**F9** recalibrates neutral, and **F10** exits (on key release). These keys are
+not suppressed, so choose game bindings that do not conflict with them.
+`P` also exits when the preview has focus. Losing the selected hand releases
+inputs; returning, resuming, or recentering requires another one-second calibration.
+Tracking results older than 0.3 seconds also release input.
+
+One-hand settings are independent in `handcontroller/config.py`:
+
+- `ONE_HAND_BINDINGS`: direction/action keys (characters or names such as `space`).
+- `ONE_HAND_ACTION_GESTURES`: gesture names for jump and interact, using the existing
+  gesture vocabulary or your trained classifier for those labels.
+- `ONE_HAND_DEADZONE`: how far to move from neutral (default 8% of frame size).
+  Lower it for a smaller movement range; raise it to tolerate more motion at rest.
+- `ONE_HAND_RELEASE_RATIO`: return threshold relative to the activation threshold.
+- `ONE_HAND_CALIBRATION_SECONDS` and `ONE_HAND_CALIBRATION_TOLERANCE`: resting-position setup.
+
+The preview shows the neutral region and currently active inputs. This initial
+mode uses held actions; it does not yet provide toggle actions, mouse aiming,
+or a settings UI. Existing mouse-range calibration applies only to two-hand mode.
+
+### Two-hand mode
+
 ```bash
 python handcontroller/hand_controller.py
 ```

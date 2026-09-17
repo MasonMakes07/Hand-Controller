@@ -22,6 +22,19 @@ MODELS_DIR = os.path.join(os.path.dirname(__file__), "models")
 KEYBOARD_HAND_LABEL = "Right"
 MOUSE_HAND_LABEL = "Left"
 
+# One-hand mode has independent mappings; two-hand bindings are unchanged.
+ONE_HAND_LABEL = "Right"
+ONE_HAND_DEADZONE = 0.08  # fraction of camera width/height away from rest
+ONE_HAND_RELEASE_RATIO = 0.65  # smaller release boundary reduces jitter
+ONE_HAND_CALIBRATION_SECONDS = 1.0
+ONE_HAND_CALIBRATION_TOLERANCE = 0.025
+ONE_HAND_ACTION_GESTURES = {"jump": "fist", "interact": "thumbs_up"}
+ONE_HAND_BINDINGS = {
+    "up": "w", "left": "a", "down": "s", "right": "d",
+    "jump": "space", "interact": "e",
+}
+ONE_HAND_TRACKING_TIMEOUT = 0.3  # release inputs if inference stops responding
+
 # --- Legacy threshold-based gesture detection (handcontroller/legacy_gestures.py) ---
 THRESHOLD = 0.02  # raise if false positives, lower if gestures won't trigger
 THUMB_THRESHOLD = 0.06
