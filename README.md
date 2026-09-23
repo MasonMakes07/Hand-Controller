@@ -98,7 +98,9 @@ The global hotkeys work while the game is focused: **F8** pauses/resumes,
 **F9** recalibrates neutral, and **F10** exits (on key release). These keys are
 not suppressed, so choose game bindings that do not conflict with them.
 `P` also exits when the preview has focus. Losing the selected hand releases
-inputs; returning, resuming, or recentering requires another one-second calibration.
+inputs but preserves the resting position. When tracking returns, movement and
+gestures resume anywhere in the camera frame without recalibration. Resuming
+from pause or pressing F9 requires another one-second calibration.
 Tracking results older than 0.3 seconds also release input.
 
 One-hand settings are independent in `handcontroller/config.py`:
@@ -106,12 +108,17 @@ One-hand settings are independent in `handcontroller/config.py`:
 - `ONE_HAND_BINDINGS`: direction/action keys (characters or names such as `space`).
 - `ONE_HAND_ACTION_GESTURES`: gesture names for jump and interact, using the existing
   gesture vocabulary or your trained classifier for those labels.
-- `ONE_HAND_DEADZONE`: how far to move from neutral (default 8% of frame size).
+- `ONE_HAND_DETECTION_SIZE`: resolution used for one-hand recognition (default
+  `None`, preserving the full camera resolution). Set to `(640, 480)` or
+  `(480, 360)` if processing is too slow.
+- `ONE_HAND_DEADZONE`: how far to move from neutral (default 12% of frame size).
   Lower it for a smaller movement range; raise it to tolerate more motion at rest.
 - `ONE_HAND_RELEASE_RATIO`: return threshold relative to the activation threshold.
 - `ONE_HAND_CALIBRATION_SECONDS` and `ONE_HAND_CALIBRATION_TOLERANCE`: resting-position setup.
 
-The preview shows the neutral region and currently active inputs. This initial
+The preview shows the neutral region and currently active inputs. The neutral
+box is a resting area for movement, not a recognition boundary: gestures are
+recognized across the entire camera frame, including outside the box. This initial
 mode uses held actions; it does not yet provide toggle actions, mouse aiming,
 or a settings UI. Existing mouse-range calibration applies only to two-hand mode.
 

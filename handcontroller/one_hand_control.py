@@ -26,7 +26,12 @@ class OneHandController:
         if self.paused:
             return set(), "paused"
         if point is None:
-            self.reset()
+            # A missed detection must not move the resting position or require
+            # the hand to return there. Release keys, then accept the next
+            # detected position anywhere in the frame against the same center.
+            self._directions.clear()
+            self._candidate = None
+            self._since = None
             return set(), "no hand - input released"
         if self.center is None:
             if self._candidate is None or max(abs(a - b) for a, b in zip(point, self._candidate)) > self.calibration_tolerance:

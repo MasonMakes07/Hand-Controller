@@ -24,7 +24,8 @@ MOUSE_HAND_LABEL = "Left"
 
 # One-hand mode has independent mappings; two-hand bindings are unchanged.
 ONE_HAND_LABEL = "Right"
-ONE_HAND_DEADZONE = 0.08  # fraction of camera width/height away from rest
+ONE_HAND_DETECTION_SIZE = None  # use full camera resolution to preserve finger detail
+ONE_HAND_DEADZONE = 0.12  # neutral box extends 12% of frame width/height from rest
 ONE_HAND_RELEASE_RATIO = 0.65  # smaller release boundary reduces jitter
 ONE_HAND_CALIBRATION_SECONDS = 1.0
 ONE_HAND_CALIBRATION_TOLERANCE = 0.025

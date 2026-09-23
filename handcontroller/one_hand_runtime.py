@@ -76,7 +76,7 @@ def run(args, load_classifier, classify, draw_landmarks, resolve):
             if not success:
                 output.release_all()
                 debounce.reset()
-                controls.reset()
+                controls.update(None, set(), time.monotonic())
                 active_gestures = set()
                 continue
             now = time.monotonic()
@@ -84,8 +84,8 @@ def run(args, load_classifier, classify, draw_landmarks, resolve):
             last_frame = now
             image = cv.flip(image, 1)
             rgb = cv.cvtColor(image, cv.COLOR_BGR2RGB)
-            if config.DETECTION_SIZE:
-                rgb = cv.resize(rgb, config.DETECTION_SIZE, interpolation=cv.INTER_LINEAR)
+            if config.ONE_HAND_DETECTION_SIZE:
+                rgb = cv.resize(rgb, config.ONE_HAND_DETECTION_SIZE, interpolation=cv.INTER_LINEAR)
             sequence += 1
             landmarker.detect_async(mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb), sequence)
             with lock:
@@ -112,9 +112,13 @@ def run(args, load_classifier, classify, draw_landmarks, resolve):
                 dz = controls.deadzone
                 cv.rectangle(image, (int((cx-dz)*w), int((cy-dz)*h)),
                              (int((cx+dz)*w), int((cy+dz)*h)), (255, 200, 0), 2)
+                cv.putText(image, "Neutral zone", (max(0, int((cx-dz)*w)),
+                           max(15, int((cy-dz)*h)-8)), cv.FONT_HERSHEY_SIMPLEX,
+                           0.5, (255, 200, 0), 1)
             lines = [f"ONE HAND ({args.hand}): {state}",
                      "Inputs: " + (", ".join(sorted(active)) or "none"),
-                     "F8: pause/resume | F9: recenter | F10: quit"]
+                     "F8: pause/resume | F9: recenter | F10: quit",
+                     "Box = rest only; move and gesture anywhere in view"]
             if args.debug_timing:
                 lines.append(f"FPS: {fps:.1f} | tracking age: {(now-snapshot['time'])*1000:.0f} ms")
             for i, line in enumerate(lines):
